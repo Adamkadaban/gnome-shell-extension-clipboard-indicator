@@ -186,6 +186,14 @@
                 Allow caching images to disk
             </description>
         </key>
+        <key type="i" name="image-preview-size">
+            <default>128</default>
+            <summary>Image preview size in pixels</summary>
+            <description>
+                The size of image previews in pixels (applies to both width and height)
+            </description>
+            <range min="16" max="512"/>
+        </key>
         <key name="excluded-apps" type="as">
             <default>[]</default>
             <summary>List of excluded applications</summary>

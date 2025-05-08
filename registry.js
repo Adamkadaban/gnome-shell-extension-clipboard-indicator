@@ -135,7 +135,7 @@ export class Registry {
         return GLib.file_test(filename, FileTest.EXISTS);
     }
 
-    async getEntryAsImage (entry) {
+    async getEntryAsImage (entry, size = 128) {
         const filename = this.getEntryFilename(entry);
 
         if (entry.isImage() === false) return;
@@ -145,7 +145,18 @@ export class Registry {
         }
 
         const gicon = Gio.icon_new_for_string(this.getEntryFilename(entry));
-        const stIcon = new St.Icon({ gicon });
+        // Set max dimensions to maintain aspect ratio
+        const stIcon = new St.Icon({ 
+            gicon, 
+            icon_size: size,
+            style: `
+                width: auto;
+                height: auto;
+                max-width: ${size}px; 
+                max-height: ${size}px;
+                -st-icon-style: requested;
+            `
+        });
         return stIcon;
     }
 

@@ -61,15 +61,29 @@
 .clipboard-menu-img-preview {
     border:solid 1px white;
     overflow:hidden;
-    width:1.5em;
-    height:1.5em;
-    margin:0;
+    max-width:128px; /* Will be adjusted via JS based on user setting */
+    max-height:128px; /* Will be adjusted via JS based on user setting */
+    margin:5px;
     padding:0;
+    object-fit:contain;
+    width: auto !important;
+    height: auto !important;
 }
 
 .clipboard-indicator-img-preview {
     border:solid 1px white;
-    width:1em;
-    height:1em;
-    margin-right:.25em;
+    max-width:128px; /* Will be adjusted via JS based on user setting */
+    max-height:128px; /* Will be adjusted via JS based on user setting */
+    margin-right:.5em;
+    object-fit:contain;
+    width: auto !important;
+    height: auto !important;
+}
+
+.clipboard-indicator-topbar-preview {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: auto;
+    height: auto;
 }

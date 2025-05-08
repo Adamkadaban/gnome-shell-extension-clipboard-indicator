@@ -25,6 +25,7 @@ export default class ClipboardIndicatorPreferences extends ExtensionPreferences 
 class Settings {
     constructor (schema) {
         this.schema = schema;
+        console.log("Starting prefs.js constructor");
 
         this.field_size = new Adw.SpinRow({
             title: _("History Size"),
@@ -122,6 +123,22 @@ class Settings {
             active: true
         });
 
+        // Add image preview size control
+        try {
+            console.log("Creating image preview size field");
+            this.field_image_preview_size = new Adw.SpinRow({
+                title: _("Image preview size (pixels)"),
+                adjustment: new Gtk.Adjustment({
+                    lower: 16, 
+                    upper: 512,
+                    step_increment: 16
+                })
+            });
+            console.log("Successfully created image preview size field");
+        } catch (error) {
+            console.error("Failed to create image preview size field:", error);
+        }
+
         this.field_exclusion_row = new Adw.ExpanderRow({
             title: _('Excluded Apps'),
             subtitle: _('Content copied will not be saved while these apps are in focus'),
@@ -161,6 +178,15 @@ class Settings {
         this.behavior.add(this.field_clear_on_boot);
         this.behavior.add(this.field_paste_on_select);
         this.behavior.add(this.field_cache_images);
+        
+        // Add image preview size field to the UI
+        try {
+            console.log("Adding image preview size to behavior group");
+            this.behavior.add(this.field_image_preview_size);
+            console.log("Successfully added image preview size to behavior group");
+        } catch (error) {
+            console.error("Failed to add image preview size to behavior group:", error);
+        }
 
         this.exclusion.add(this.field_exclusion_row);
         this.exclusion.add(this.field_exclusion_row_add_button);
@@ -198,6 +224,13 @@ class Settings {
         this.schema.bind(PrefsFields.CLEAR_ON_BOOT, this.field_clear_on_boot, 'active', Gio.SettingsBindFlags.DEFAULT);
         this.schema.bind(PrefsFields.PASTE_ON_SELECT, this.field_paste_on_select, 'active', Gio.SettingsBindFlags.DEFAULT);
         this.schema.bind(PrefsFields.CACHE_IMAGES, this.field_cache_images, 'active', Gio.SettingsBindFlags.DEFAULT);
+        // Make sure the image preview size setting is bound to the UI
+        try {
+            this.schema.bind(PrefsFields.IMAGE_PREVIEW_SIZE, this.field_image_preview_size, 'value', Gio.SettingsBindFlags.DEFAULT);
+            console.log("Successfully bound image preview size setting");
+        } catch (error) {
+            console.error("Failed to bind image preview size setting:", error);
+        }
 
         this.#fetchExludedAppsList();
     }

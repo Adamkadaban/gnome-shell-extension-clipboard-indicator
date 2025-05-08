@@ -41,6 +41,7 @@ let KEEP_SELECTED_ON_CLEAR    = false;
 let PASTE_BUTTON              = true;
 let PINNED_ON_BOTTOM          = false;
 let CACHE_IMAGES              = true;
+let IMAGE_PREVIEW_SIZE        = 128;
 let EXCLUDED_APPS             = [];
 
 export default class ClipboardIndicatorExtension extends Extension {
@@ -92,6 +93,7 @@ const ClipboardIndicator = GObject.registerClass({
 
         this._shortcutsBindingIds = [];
         this.clipItemsRadioGroup = [];
+        this._lastImagePreviewSize = IMAGE_PREVIEW_SIZE;
 
         let hbox = new St.BoxLayout({
             style_class: 'panel-status-menu-box clipboard-indicator-hbox'
@@ -110,7 +112,9 @@ const ClipboardIndicator = GObject.registerClass({
         });
 
         this._buttonImgPreview = new St.Bin({
-            style_class: 'clipboard-indicator-topbar-preview'
+            style_class: 'clipboard-indicator-topbar-preview',
+            x_align: Clutter.ActorAlign.CENTER,
+            y_align: Clutter.ActorAlign.CENTER
         });
 
         hbox.add_child(this.icon);
@@ -147,8 +151,9 @@ const ClipboardIndicator = GObject.registerClass({
             else if (entry.isImage()) {
                 this._buttonText.set_text('');
                 this._buttonImgPreview.destroy_all_children();
-                this.registry.getEntryAsImage(entry).then(img => {
+                this.registry.getEntryAsImage(entry, IMAGE_PREVIEW_SIZE).then(img => {
                     img.add_style_class_name('clipboard-indicator-img-preview');
+                    img.x_align = Clutter.ActorAlign.CENTER;
                     img.y_align = Clutter.ActorAlign.CENTER;
 
                     // icon only renders properly in setTimeout for some arcane reason
@@ -396,8 +401,10 @@ const ClipboardIndicator = GObject.registerClass({
             menuItem.label.set_text(this._truncate(entry.getStringValue(), MAX_ENTRY_LENGTH));
         }
         else if (entry.isImage()) {
-            this.registry.getEntryAsImage(entry).then(img => {
+            this.registry.getEntryAsImage(entry, IMAGE_PREVIEW_SIZE).then(img => {
                 img.add_style_class_name('clipboard-menu-img-preview');
+                img.x_align = Clutter.ActorAlign.CENTER;
+                img.y_align = Clutter.ActorAlign.CENTER;
                 if (menuItem.previewImage) {
                     menuItem.remove_child(menuItem.previewImage);
                 }
@@ -927,6 +934,7 @@ const ClipboardIndicator = GObject.registerClass({
         PASTE_BUTTON           = settings.get_boolean(PrefsFields.PASTE_BUTTON);
         PINNED_ON_BOTTOM       = settings.get_boolean(PrefsFields.PINNED_ON_BOTTOM);
         CACHE_IMAGES           = settings.get_boolean(PrefsFields.CACHE_IMAGES);
+        IMAGE_PREVIEW_SIZE     = settings.get_int(PrefsFields.IMAGE_PREVIEW_SIZE);
         EXCLUDED_APPS          = settings.get_strv(PrefsFields.EXCLUDED_APPS);
     }
 
@@ -946,6 +954,9 @@ const ClipboardIndicator = GObject.registerClass({
                 mItem.pasteBtn.visible = PASTE_BUTTON;
             });
 
+            // Update CSS for image preview sizes
+            this._updateImagePreviewSizes();
+            
             //update topbar
             this._updateTopbarLayout();
             that.#updateIndicatorContent(await this.#getClipboardContent());
@@ -993,6 +1004,59 @@ const ClipboardIndicator = GObject.registerClass({
         this._shortcutsBindingIds.push(name);
     }
 
+    _updateImagePreviewSizes() {
+        // Only update if the size has changed
+        if (this._lastImagePreviewSize === IMAGE_PREVIEW_SIZE) {
+            return;
+        }
+        
+        this._lastImagePreviewSize = IMAGE_PREVIEW_SIZE;
+        
+        // We need to dynamically update the CSS classes with the new size
+        // so that image aspect ratio is properly maintained
+        const styleContext = St.ThemeContext.get_for_stage(global.stage);
+        if (styleContext) {
+            const stylesheet = styleContext.get_stylesheet();
+            if (stylesheet) {
+                // Update the CSS classes with new max-width and max-height values
+                const menuPreviewNode = stylesheet.lookup_node('.clipboard-menu-img-preview');
+                const indicatorPreviewNode = stylesheet.lookup_node('.clipboard-indicator-img-preview');
+                
+                if (menuPreviewNode) {
+                    menuPreviewNode.set_max_width(IMAGE_PREVIEW_SIZE);
+                    menuPreviewNode.set_max_height(IMAGE_PREVIEW_SIZE);
+                }
+                
+                if (indicatorPreviewNode) {
+                    indicatorPreviewNode.set_max_width(IMAGE_PREVIEW_SIZE);
+                    indicatorPreviewNode.set_max_height(IMAGE_PREVIEW_SIZE);
+                }
+            }
+        }
+        
+        // Force refresh any existing previews
+        this._getAllIMenuItems().forEach(mItem => {
+            if (mItem.entry && mItem.entry.isImage()) {
+                // Remove existing preview if any
+                if (mItem.previewImage) {
+                    mItem.remove_child(mItem.previewImage);
+                    mItem.previewImage = null;
+                }
+                // Refresh the image with the new size
+                this._setEntryLabel(mItem);
+            }
+        });
+        
+        // Update the current indicator content if it's an image
+        const currentItem = this._getCurrentlySelectedItem();
+        if (currentItem && currentItem.entry && currentItem.entry.isImage()) {
+            // Clear existing preview
+            this._buttonImgPreview.destroy_all_children();
+            // Update with new size
+            this.#updateIndicatorContent(currentItem.entry);
+        }
+    }
+
     _updateTopbarLayout () {
         if(TOPBAR_DISPLAY_MODE === 0){
             this.icon.visible = true;
@@ -1020,6 +1084,9 @@ const ClipboardIndicator = GObject.registerClass({
         } else {
             this._downArrow.visible = false;
         }
+        
+        // Update image preview sizes
+        this._updateImagePreviewSizes();
     }
 
     _disconnectSettings () {
