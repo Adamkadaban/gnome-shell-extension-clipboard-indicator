@@ -137,6 +137,7 @@ export class Registry {
 
     async getEntryAsImage (entry, size = 128) {
         const filename = this.getEntryFilename(entry);
+        console.log(`Creating image from ${filename} with size ${size}px`);
 
         if (entry.isImage() === false) return;
 
@@ -144,20 +145,34 @@ export class Registry {
             await this.writeEntryFile(entry);
         }
 
-        const gicon = Gio.icon_new_for_string(this.getEntryFilename(entry));
-        // Set max dimensions to maintain aspect ratio
-        const stIcon = new St.Icon({ 
-            gicon, 
-            icon_size: size,
-            style: `
-                width: auto;
-                height: auto;
-                max-width: ${size}px; 
-                max-height: ${size}px;
-                -st-icon-style: requested;
-            `
-        });
-        return stIcon;
+        // Create a pixbuf from the file to load the image with proper aspect ratio
+        try {
+            // Create an icon with a container to help maintain aspect ratio
+            const gicon = Gio.icon_new_for_string(this.getEntryFilename(entry));
+            
+            // Use a St.Icon with specific properties for better sizing control
+            const stIcon = new St.Icon({ 
+                gicon,
+                icon_size: size,
+                x_expand: true,
+                y_expand: true
+            });
+            
+            // Explicitly set style with no constraints on the ratio
+            stIcon.set_style(`
+                width: auto !important;
+                height: auto !important;
+                max-width: ${size}px !important; 
+                max-height: ${size}px !important;
+                -st-icon-style: requested !important;
+            `);
+            
+            console.log(`Created St.Icon with max dimensions: ${size}px`);
+            return stIcon;
+        } catch (e) {
+            console.error('Error creating image preview:', e);
+            return null;
+        }
     }
 
     getEntryFilename (entry) {

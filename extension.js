@@ -155,6 +155,17 @@ const ClipboardIndicator = GObject.registerClass({
                     img.add_style_class_name('clipboard-indicator-img-preview');
                     img.x_align = Clutter.ActorAlign.CENTER;
                     img.y_align = Clutter.ActorAlign.CENTER;
+                    
+                    // Apply max dimensions inline while preserving aspect ratio
+                    // Let the St.Icon's natural aspect ratio be maintained
+                    // The !important flags ensure these styles take precedence
+                    img.set_style(`
+                        width: auto !important;
+                        height: auto !important;
+                        max-width: ${IMAGE_PREVIEW_SIZE}px !important; 
+                        max-height: ${IMAGE_PREVIEW_SIZE}px !important;
+                        -st-icon-style: requested !important;
+                    `);
 
                     // icon only renders properly in setTimeout for some arcane reason
                     this._imagePreviewTimeout = setTimeout(() => {
@@ -401,10 +412,22 @@ const ClipboardIndicator = GObject.registerClass({
             menuItem.label.set_text(this._truncate(entry.getStringValue(), MAX_ENTRY_LENGTH));
         }
         else if (entry.isImage()) {
+            console.log(`Setting entry label for image with size: ${IMAGE_PREVIEW_SIZE}px`);
             this.registry.getEntryAsImage(entry, IMAGE_PREVIEW_SIZE).then(img => {
                 img.add_style_class_name('clipboard-menu-img-preview');
                 img.x_align = Clutter.ActorAlign.CENTER;
                 img.y_align = Clutter.ActorAlign.CENTER;
+                
+                // Apply max dimensions inline while preserving aspect ratio
+                // Let the St.Icon's natural aspect ratio be maintained
+                // The !important flags ensure these styles take precedence
+                img.set_style(`
+                    width: auto !important;
+                    height: auto !important;
+                    max-width: ${IMAGE_PREVIEW_SIZE}px !important; 
+                    max-height: ${IMAGE_PREVIEW_SIZE}px !important;
+                    -st-icon-style: requested !important;
+                `);
                 if (menuItem.previewImage) {
                     menuItem.remove_child(menuItem.previewImage);
                 }
@@ -791,7 +814,13 @@ const ClipboardIndicator = GObject.registerClass({
     }
 
     _openSettings () {
-        this.extension.openSettings();
+        // Just use the simplest approach that's most compatible
+        try {
+            // Trigger the preference UI through GNOME Shell's extension system
+            Main.extensionManager.openExtensionPrefs(this.extension.uuid, '', {});
+        } catch (e) {
+            console.error('Error opening preferences:', e);
+        }
     }
 
     _initNotifSource () {
@@ -935,6 +964,7 @@ const ClipboardIndicator = GObject.registerClass({
         PINNED_ON_BOTTOM       = settings.get_boolean(PrefsFields.PINNED_ON_BOTTOM);
         CACHE_IMAGES           = settings.get_boolean(PrefsFields.CACHE_IMAGES);
         IMAGE_PREVIEW_SIZE     = settings.get_int(PrefsFields.IMAGE_PREVIEW_SIZE);
+        console.log(`Fetched settings - Image preview size: ${IMAGE_PREVIEW_SIZE}`);
         EXCLUDED_APPS          = settings.get_strv(PrefsFields.EXCLUDED_APPS);
     }
 
@@ -955,6 +985,7 @@ const ClipboardIndicator = GObject.registerClass({
             });
 
             // Update CSS for image preview sizes
+            console.log('About to update image preview sizes');
             this._updateImagePreviewSizes();
             
             //update topbar
@@ -1006,35 +1037,19 @@ const ClipboardIndicator = GObject.registerClass({
 
     _updateImagePreviewSizes() {
         // Only update if the size has changed
+        console.log(`Checking image preview size update: ${this._lastImagePreviewSize} vs ${IMAGE_PREVIEW_SIZE}`);
         if (this._lastImagePreviewSize === IMAGE_PREVIEW_SIZE) {
             return;
         }
         
         this._lastImagePreviewSize = IMAGE_PREVIEW_SIZE;
+        console.log(`Updating image preview size to: ${IMAGE_PREVIEW_SIZE}`);
         
-        // We need to dynamically update the CSS classes with the new size
-        // so that image aspect ratio is properly maintained
-        const styleContext = St.ThemeContext.get_for_stage(global.stage);
-        if (styleContext) {
-            const stylesheet = styleContext.get_stylesheet();
-            if (stylesheet) {
-                // Update the CSS classes with new max-width and max-height values
-                const menuPreviewNode = stylesheet.lookup_node('.clipboard-menu-img-preview');
-                const indicatorPreviewNode = stylesheet.lookup_node('.clipboard-indicator-img-preview');
-                
-                if (menuPreviewNode) {
-                    menuPreviewNode.set_max_width(IMAGE_PREVIEW_SIZE);
-                    menuPreviewNode.set_max_height(IMAGE_PREVIEW_SIZE);
-                }
-                
-                if (indicatorPreviewNode) {
-                    indicatorPreviewNode.set_max_width(IMAGE_PREVIEW_SIZE);
-                    indicatorPreviewNode.set_max_height(IMAGE_PREVIEW_SIZE);
-                }
-            }
-        }
+        // Instead of trying to modify the CSS directly, we'll apply styles to individual elements
+        // This is more reliable than trying to modify the stylesheet
         
         // Force refresh any existing previews
+        console.log(`Refreshing all image previews with size: ${IMAGE_PREVIEW_SIZE}px`);
         this._getAllIMenuItems().forEach(mItem => {
             if (mItem.entry && mItem.entry.isImage()) {
                 // Remove existing preview if any
@@ -1085,8 +1100,10 @@ const ClipboardIndicator = GObject.registerClass({
             this._downArrow.visible = false;
         }
         
-        // Update image preview sizes
-        this._updateImagePreviewSizes();
+        // Update image preview sizes if they've changed
+        if (this._lastImagePreviewSize !== IMAGE_PREVIEW_SIZE) {
+            this._updateImagePreviewSizes();
+        }
     }
 
     _disconnectSettings () {
@@ -1239,32 +1256,45 @@ const ClipboardIndicator = GObject.registerClass({
         ];
 
         for (let type of mimetypes) {
-            let result = await new Promise(resolve => this.extension.clipboard.get_content(CLIPBOARD_TYPE, type, (clipBoard, bytes) => {
-                if (bytes === null || bytes.get_size() === 0) {
-                    resolve(null);
-                    return;
-                }
+            try {
+                let result = await new Promise((resolve, reject) => {
+                    this.extension.clipboard.get_content(CLIPBOARD_TYPE, type, (clipBoard, bytes) => {
+                        if (bytes === null || bytes.get_size() === 0) {
+                            resolve(null);
+                            return;
+                        }
 
-                // HACK: workaround for GNOME 2nd+ copy mangling mimetypes https://gitlab.gnome.org/GNOME/gnome-shell/-/issues/8233
-                // In theory GNOME or XWayland should auto-convert this back to UTF8_STRING for legacy apps when it's needed https://gitlab.gnome.org/GNOME/gtk/-/merge_requests/5300
-                if (type === "UTF8_STRING") {
-                    type = "text/plain;charset=utf-8";
-                }
-                
-                const entry = new ClipboardEntry(type, bytes.get_data(), false);
-                if (CACHE_IMAGES && entry.isImage()) {
-                    this.registry.writeEntryFile(entry);
-                }
-                resolve(entry);
-            }));
+                        // HACK: workaround for GNOME 2nd+ copy mangling mimetypes https://gitlab.gnome.org/GNOME/gnome-shell/-/issues/8233
+                        // In theory GNOME or XWayland should auto-convert this back to UTF8_STRING for legacy apps when it's needed https://gitlab.gnome.org/GNOME/gtk/-/merge_requests/5300
+                        let finalType = type;
+                        if (type === "UTF8_STRING") {
+                            finalType = "text/plain;charset=utf-8";
+                        }
+                        
+                        try {
+                            const entry = new ClipboardEntry(finalType, bytes.get_data(), false);
+                            if (CACHE_IMAGES && entry.isImage()) {
+                                this.registry.writeEntryFile(entry);
+                            }
+                            resolve(entry);
+                        } catch (e) {
+                            console.error('Error creating clipboard entry:', e);
+                            reject(e);
+                        }
+                    });
+                });
 
-            if (result) {
-                if (!CACHE_IMAGES && result.isImage()) {
-                    return null;
+                if (result) {
+                    if (!CACHE_IMAGES && result.isImage()) {
+                        return null;
+                    }
+                    else {
+                        return result;
+                    }
                 }
-                else {
-                    return result;
-                }
+            } catch (e) {
+                console.error(`Error getting clipboard content for mimetype ${type}:`, e);
+                // Continue to next mimetype
             }
         }
 

@@ -3,7 +3,8 @@ import GObject from 'gi://GObject';
 import Gtk from 'gi://Gtk';
 import Gdk from 'gi://Gdk';
 import Gio from 'gi://Gio';
-import { ExtensionPreferences, gettext as _ } from 'resource:///org/gnome/Shell/Extensions/js/extensions/prefs.js';
+import { ExtensionPreferences } from 'resource:///org/gnome/Shell/Extensions/js/extensions/prefs.js';
+const _ = text => text; // Fallback for gettext to get preferences working
 import { PrefsFields } from './constants.js';
 
 export default class ClipboardIndicatorPreferences extends ExtensionPreferences {
